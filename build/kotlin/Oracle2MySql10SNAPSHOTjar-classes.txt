@@ -1,0 +1,1 @@
+Q:\arbeit\intellij_projects\Oracle2MySql\build\classes\kotlin\main\de\heikozelt\oracle2mysql\Oracle2MySqlKt$log$1.class;Q:\arbeit\intellij_projects\Oracle2MySql\build\classes\kotlin\main\de\heikozelt\oracle2mysql\Oracle2MySqlKt.class

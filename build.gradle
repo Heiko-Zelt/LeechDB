@@ -1,0 +1,61 @@
+// Groovy build script
+
+plugins {
+    //id 'org.jetbrains.kotlin.jvm' version '1.5.20'
+    id 'org.jetbrains.kotlin.jvm' version '1.6.10'
+    id "org.jetbrains.dokka" version "1.6.10"
+}
+
+group 'de.heikozelt.oracle2mysql'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    //mavenLocal('F:\\m2\\repository')
+}
+
+// Konfiguration des jar-Tasks
+jar {
+    manifest {
+        attributes "Main-Class": "de.heikozelt.oracle2mysql.Oracle2MySqlKt"
+    }
+    from {
+        configurations.implementation.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
+task customFatJar(type: Jar) {
+    description 'Creates one big .jar file with program and libraries, jdbc driver, etc...'
+    manifest {
+        attributes 'Main-Class': 'de.heikozelt.oracle2mysql.Oracle2MySqlKt'
+    }
+    from {
+        configurations.compileClasspath.findAll { it.name.endsWith('jar') }.collect { zipTree(it) }
+    }
+    with jar
+}
+
+/*
+task copySourceJars( type: Copy ) {
+    def sources = configurations.runtime.resolvedConfiguration.resolvedArtifacts.collect { artifact ->
+        project.dependencies.create( [
+                group: artifact.moduleVersion.id.group,
+                name: artifact.moduleVersion.id.name,
+                version: artifact.moduleVersion.id.version,
+                classifier: 'sources'
+        ] )
+    }
+    from configurations.detachedConfiguration( sources as Dependency[] )
+            .resolvedConfiguration.lenientConfiguration.getFiles( Specs.SATISFIES_ALL )
+    into file( 'some-directory/' )
+}
+*/
+
+
+dependencies {
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib'
+    implementation 'com.oracle.database.jdbc:ojdbc11-production:21.5.0.0'
+    implementation 'io.github.microutils:kotlin-logging:2.0.3'
+    implementation 'org.slf4j:slf4j-api:1.7.35' // needed by kotlin-logging
+    implementation 'org.slf4j:slf4j-simple:1.7.35' // simple implementation of api
+}

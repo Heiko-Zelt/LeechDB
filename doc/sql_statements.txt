@@ -1,0 +1,7 @@
+alter user scott identified by tiger account unlock;
+
+CREATE TABLE scott.images(img_id NUMBER, icon BLOB);
+
+INSERT INTO images (img_id, icon) VALUES (1,EMPTY_BLOB);
+
+select * from images;

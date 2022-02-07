@@ -1,0 +1,14 @@
+/*
+pluginManagement {
+    repositories {
+        maven{
+            url uri ('F:\\m2\\repository')
+        }
+        //mavenCentral()
+        //gradlePluginPortal()
+    }
+}
+*/
+
+rootProject.name = 'Oracle2MySql'
+

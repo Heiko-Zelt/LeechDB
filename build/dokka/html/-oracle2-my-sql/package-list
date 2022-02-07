@@ -1,0 +1,26 @@
+$dokka.format:html-v1
+$dokka.linkExtension:html
+$dokka.location:de.heikozelt.oracle2mysql////PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/index.html
+$dokka.location:de.heikozelt.oracle2mysql//absoluteBlobFileName/#kotlin.String#kotlin.String#kotlin.Int/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/absolute-blob-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//absoluteClobFileName/#kotlin.String#kotlin.String#kotlin.Int/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/absolute-clob-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//absoluteInsertSqlFileName/#kotlin.String#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/absolute-insert-sql-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//absoluteLobDirName/#kotlin.String#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/absolute-lob-dir-name.html
+$dokka.location:de.heikozelt.oracle2mysql//absoluteMainSqlFileName/#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/absolute-main-sql-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//absoluteTruncatesSqlFileName/#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/absolute-truncates-sql-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//appendMySqlString/#java.lang.StringBuilder#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/append-my-sql-string.html
+$dokka.location:de.heikozelt.oracle2mysql//assertEmptyDirectory/#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/assert-empty-directory.html
+$dokka.location:de.heikozelt.oracle2mysql//blobFileName/#kotlin.Int/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/blob-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//createDirectory/#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/create-directory.html
+$dokka.location:de.heikozelt.oracle2mysql//escapeMySqlName/#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/escape-my-sql-name.html
+$dokka.location:de.heikozelt.oracle2mysql//main/#kotlin.Array[kotlin.String]/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/main.html
+$dokka.location:de.heikozelt.oracle2mysql//mainPrefix/#kotlin.String#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/main-prefix.html
+$dokka.location:de.heikozelt.oracle2mysql//relativeBlobFileName/#kotlin.String#kotlin.Int/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/relative-blob-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//relativeClobFileName/#kotlin.String#kotlin.Int/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/relative-clob-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//relativeInsertSqlFileName/#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/relative-insert-sql-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//relativeMainSqlFileName/#/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/relative-main-sql-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//relativeTruncatesSqlFileName/#/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/relative-truncates-sql-file-name.html
+$dokka.location:de.heikozelt.oracle2mysql//writeInputStreamToFile/#java.io.InputStream#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/write-input-stream-to-file.html
+$dokka.location:de.heikozelt.oracle2mysql//writeInputStreamToZipFile/#java.io.InputStream#kotlin.String#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/write-input-stream-to-zip-file.html
+$dokka.location:de.heikozelt.oracle2mysql//writeReaderToFile/#java.io.Reader#kotlin.String/PointingToDeclaration/-oracle2-my-sql/de.heikozelt.oracle2mysql/write-reader-to-file.html
+de.heikozelt.oracle2mysql
+
