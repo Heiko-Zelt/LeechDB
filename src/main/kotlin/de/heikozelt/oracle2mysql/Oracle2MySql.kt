@@ -15,6 +15,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.*
+import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.system.exitProcess
@@ -77,8 +78,8 @@ fun main() {
         } else {
             truncatesFile.write("$TRUNCATE_TABLE${escapeMySqlName(tableName)};\n")
             val rowCount = countRows(conn, tableName)
-            checkFile.write("SELECT '${escapeMySqlName(tableName)} COUNT $rowCount' AS Test,")
-            checkFile.write(" IF($rowCount = COUNT(*), 'ok', 'FAILED') AS Result")
+            checkFile.write("SELECT IF($rowCount = COUNT(*), 'ok', 'FAILED') AS Result,")
+            checkFile.write(" '${escapeMySqlName(tableName)} COUNT $rowCount' AS Test")
             checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
             if (rowCount == 0) {
                 log.debug("  is empty table")
@@ -159,8 +160,8 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
             val colType = meta.getColumnTypeName(i)
             if (colType == "BLOB" || colType == "CLOB") {
                 hasLobColumn = true
-                checkFile.write("SELECT '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} LOAD_FILE() AS Test',")
-                checkFile.write(" IF(0 = COUNT(*), 'ok', 'FAILED') AS Result")
+                checkFile.write("SELECT IF(0 = COUNT(*), 'ok', 'FAILED') AS Result,")
+                checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} LOAD_FILE()' AS Test")
                 checkFile.write(" FROM ${escapeMySqlName(tableName)}")
                 checkFile.write(" WHERE ${escapeMySqlName(colName)} = $IMPORT_ERROR;\n")
             }
@@ -181,6 +182,9 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
     val sqlFile = File(absoluteInsertSqlFileName(targetPath, tableName))
     val sqlStream = PrintStream(sqlFile)
 
+    // Position 0 wird nicht verwendet
+    val checkSums = LongArray(numberOfColumns + 1) { 0L }
+    val crc32 = CRC32()
     while (rs.next()) {
         val valuesSb = StringBuilder()
         firstAppended = false
@@ -233,6 +237,10 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
                     }
                     is String -> {
                         appendMySqlString(valuesSb, obj)
+                        val ba = obj.toByteArray()
+                        crc32.reset()
+                        crc32.update(ba, 0, ba.size)
+                        checkSums[i] = checkSums[i] xor crc32.value
                     }
                     is Timestamp -> { // todo: Genauigkeit beachten
                         // '2021-12-31 23:59:59'
@@ -256,6 +264,17 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
         val insertStatement = "$insertPrefix$values$insertSuffix"
         //de.heikozelt.oracle2mysql.log.debug("insertStatement='$insertStatement'")
         sqlStream.println(insertStatement)
+    }
+    for(i in 1..numberOfColumns) {
+        val colName = meta.getColumnName(i)
+        if(colName.lowercase() !in excludedColumns) {
+            val colType = meta.getColumnTypeName(i)
+            if (colType == "VARCHAR2") {
+                checkFile.write("SELECT IF(${checkSums[i]} = BIT_XOR(CRC32(${escapeMySqlName(colName)})), 'ok', 'FAILED') As Result,")
+                checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} checksum' AS Test")
+                checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
+            }
+        }
     }
     sqlStream.close()
 }
