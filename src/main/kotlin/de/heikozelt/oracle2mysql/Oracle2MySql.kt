@@ -19,73 +19,80 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.system.exitProcess
 
-private const val MAIN_SUFFIX = "SET foreign_key_checks=1;\n"
 private const val SELECT_TABLE_NAMES = "SELECT TABLE_NAME FROM USER_TABLES ORDER BY TABLE_NAME"
 private const val SELECT_ALL_FROM = "SELECT * FROM "
 private const val SELECT_COUNT_FROM = "SELECT COUNT(*) FROM "
 private const val TRUNCATE_TABLE = "TRUNCATE TABLE "
+
+/**
+ * This MySQL-value is inserted, if LOAD_FILE() returns NULL = file not found
+ */
+private const val IMPORT_ERROR = "'iMpOrTeRrOr'"
+
 private val log = KotlinLogging.logger {}
 private val byteBuffer = ByteArray(1 shl 13) { 0 }
 private val charBuffer = CharArray(1 shl 12) { ' ' }
 private val mySqlTimestampFormat = DateTimeFormatter
     .ofPattern("''yyyy-MM-dd HH:mm:ss.nnnnnnnnn''")
     .withLocale(Locale.getDefault())
-    .withZone(ZoneId.systemDefault());
+    .withZone(ZoneId.systemDefault())
 
 
 /**
  * This little program helps to migrate data from an Oracle to a MySQL/Maria database.
- * It reads a schema from an Oracle database via JDBC and writes the contents of the tables in the schema into files.
+ * It reads a schema from an Oracle database via JDBC and writes the contents of the tables into files.
  * The files contain MySQL-INSERT-Statements to be imported via mysql command line client.
  * If columns contains large objects (CLOBs or BLOBs) they are written to separate files and referenced.
  * Reads configuration file "export.properties" from current working directory.
  * It is assumed that the schema in the target database already exists e.g. created using "Liquibase".
  * Before importing the new data foreign key constraints must be switched of temporarily.
+ * todo: exclude/ignore tables, property list of (table_name)
+ * todo: exclude/ignore columns, property list of (table_name.column_name)
  */
-fun main(args: Array<String>) {
+fun main() {
     val startTime = System.nanoTime()
     log.debug("Starting...")
-    val fis = FileInputStream("export.properties")
-    val props = Properties()
-    props.load(fis)
-    val url = props.getProperty("oracle2mysql.source.url")
-    log.info("url: '$url'")
-    val user = props.getProperty("oracle2mysql.source.user")
-    log.info("user: '$user'")
-    val password = props.getProperty("oracle2mysql.source.password")
-    //val schema = props.getProperty("oracle2mysql.source.schema")
-    //de.heikozelt.oracle2mysql.log.debug("schema: '$schema'")
-    val targetPath = props.getProperty("oracle2mysql.target.path")
-    log.info("targetPath: '$targetPath'")
-    assertEmptyDirectory(targetPath)
+
+    val konf = Konfiguration().apply {
+        loadFromPropertiesFile()
+        assertEmptyDirectory(targetPath)
+    }
 
     val ds = OracleDataSource()
-    ds.url = url
-    val conn = ds.getConnection(user, password)
+    ds.url = konf.url
+    val conn = ds.getConnection(konf.user, konf.password)
     val stmt = conn.createStatement();
-    val rs = stmt.executeQuery(SELECT_TABLE_NAMES)
+    val tablesRs = stmt.executeQuery(SELECT_TABLE_NAMES)
     log.debug("executed query")
-    val truncatesFile = FileWriter(absoluteTruncatesSqlFileName(targetPath))
-    val mainFile = FileWriter(absoluteMainSqlFileName(targetPath))
-    mainFile.write(mainPrefix(url, user))
+    val truncatesFile = FileWriter(absoluteTruncatesSqlFileName(konf.targetPath))
+    val mainFile = FileWriter(absoluteMainSqlFileName(konf.targetPath))
+    val checkFile = FileWriter(absoluteCheckSqlFileName(konf.targetPath))
+    mainFile.write(mainHead(konf.url, konf.user))
     mainFile.write("source ${relativeTruncatesSqlFileName()}\n")
-    while (rs.next()) {
-        val tableName = rs.getString("TABLE_NAME")
+    while (tablesRs.next()) {
+        val tableName = tablesRs.getString("TABLE_NAME")
         log.debug("tableName: $tableName")
         if (tableName.startsWith("SYS_IOT_OVER_")) {
-            log.debug("  Überlauftabelle!")
+            log.debug("  is overflow table")
+        } else if(tableName.lowercase() in konf.excludeTables) {
+            log.debug("  is excluded table")
         } else {
             truncatesFile.write("$TRUNCATE_TABLE${escapeMySqlName(tableName)};\n")
-            if (isTableEmpty(conn, tableName)) {
-                log.debug("  table is empty")
+            val rowCount = countRows(conn, tableName)
+            checkFile.write("SELECT '${escapeMySqlName(tableName)} COUNT $rowCount' AS Test,")
+            checkFile.write(" IF($rowCount = COUNT(*), 'ok', 'FAILED') AS Result")
+            checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
+            if (rowCount == 0) {
+                log.debug("  is empty table")
             } else {
                 mainFile.write("source ${relativeInsertSqlFileName(tableName)}\n")
-                exportTable(conn, tableName, targetPath)
+                exportTable(conn, tableName, konf.targetPath, checkFile, konf.excludedColumnsForTable(tableName))
             }
         }
     }
-    mainFile.write(MAIN_SUFFIX)
+    mainFile.write(mainFoot())
     mainFile.close()
+    checkFile.close()
     truncatesFile.close()
     log.info("Export finished successfully. :-)")
     val endTime = System.nanoTime()
@@ -94,9 +101,8 @@ fun main(args: Array<String>) {
     log.info("Elapsed time: ${deci.format(elapsed)} sec")
 }
 
-/**
+/*
  * checks if table is empty
- */
 private fun isTableEmpty(conn: Connection, tableName: String): Boolean {
     log.debug("isTableEmpty(tableName=$tableName)")
     val stmt = conn.createStatement();
@@ -106,12 +112,26 @@ private fun isTableEmpty(conn: Connection, tableName: String): Boolean {
     rs.close()
     return empty
 }
+*/
+
+/**
+ * counts rows of table
+ */
+private fun countRows(conn: Connection, tableName: String): Int {
+    //log.debug("countRows(tableName=$tableName)")
+    val stmt = conn.createStatement();
+    val rs = stmt.executeQuery("$SELECT_COUNT_FROM$tableName")
+    rs.next()
+    val rowCount = rs.getInt(1)
+    rs.close()
+    return rowCount
+}
 
 /**
  * Exports a table to a file.
  * The file contains an INSERT statements for every row.
  */
-private fun exportTable(conn: Connection, tableName: String, targetPath: String) {
+private fun exportTable(conn: Connection, tableName: String, targetPath: String, checkFile: FileWriter, excludedColumns: Set<String>) {
     log.debug("exportTable(tableName=$tableName)")
     var blobId = 0
     var clobId = 0
@@ -124,19 +144,29 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String)
     val insertSb = StringBuilder()
     insertSb.append("INSERT INTO ${escapeMySqlName(tableName)} (")
     var hasLobColumn = false
+    var firstAppended = false
     for (i in 1..numberOfColumns) {
         val colName = meta.getColumnName(i)
-        if (i != 1) {
-            insertSb.append(", ")
+        if(colName.lowercase() in excludedColumns) {
+            log.debug("  column #$i: $colName: is excluded")
+        } else {
+            if (firstAppended) {
+                insertSb.append(", ")
+            }
+            insertSb.append(escapeMySqlName(colName))
+            firstAppended = true
+            val colType = meta.getColumnTypeName(i)
+            if (colType == "BLOB" || colType == "CLOB") {
+                hasLobColumn = true
+                checkFile.write("SELECT '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} LOAD_FILE() AS Test',")
+                checkFile.write(" IF(0 = COUNT(*), 'ok', 'FAILED') AS Result")
+                checkFile.write(" FROM ${escapeMySqlName(tableName)}")
+                checkFile.write(" WHERE ${escapeMySqlName(colName)} = $IMPORT_ERROR;\n")
+            }
+            val colPrecision = meta.getPrecision(i)
+            val colScale = meta.getScale(i)
+            log.debug("  column #$i: $colName: $colType ($colPrecision $colScale)")
         }
-        insertSb.append(escapeMySqlName(colName))
-        val colType = meta.getColumnTypeName(i)
-        if (colType == "BLOB" || colType == "CLOB") {
-            hasLobColumn = true
-        }
-        val colPrecision = meta.getPrecision(i)
-        val colScale = meta.getScale(i)
-        log.debug("  column #$i: $colName: $colType ($colPrecision $colScale)")
     }
     insertSb.append(") VALUES (")
     val insertPrefix = insertSb.toString()
@@ -152,48 +182,71 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String)
 
     while (rs.next()) {
         val valuesSb = StringBuilder()
+        firstAppended = false
         for (i in 1..numberOfColumns) {
-            val obj: Any? = rs.getObject(i)
-            if (i != 1) {
-                valuesSb.append(", ")
-            }
-            when (obj) {
-                null -> {
-                    valuesSb.append("null")
+            val colName = meta.getColumnName(i)
+            if(colName.lowercase() !in excludedColumns) {
+                val obj: Any? = rs.getObject(i)
+                if (firstAppended) {
+                    valuesSb.append(", ")
                 }
-                is BigDecimal -> {
-                    valuesSb.append(obj.toString())
-                }
-                is Blob -> {
-                    //log.debug("is blob")
-                    val iStream = obj.binaryStream
-                    valuesSb.append("LOAD_FILE(\"${relativeBlobFileName(tableName, blobId)}\")")
-                    writeInputStreamToZipFile(iStream, absoluteBlobFileName(targetPath, tableName, blobId), blobFileName(blobId))
-                    blobId++
-                }
-                is Clob -> {
-                    //log.debug("is clob")
-                    val reader = obj.characterStream
-                    valuesSb.append("LOAD_FILE(\"${relativeClobFileName(tableName, clobId)}\")")
-                    writeReaderToFile(reader, absoluteClobFileName(targetPath, tableName, clobId))
-                    clobId++
-                }
-                is String -> {
-                    appendMySqlString(valuesSb, obj)
-                }
-                is Timestamp -> { // todo: Genauigkeit beachten
-                    // '2021-12-31 23:59:59'
-                    val dateTime = mySqlTimestampFormat.format(obj.toInstant())
-                    valuesSb.append(dateTime)
-                }
-                is TIMESTAMP -> {
-                    //log.debug("spezielles Oracle-TIMESTAMP-Format")
-                    val dateTime = mySqlTimestampFormat.format(obj.timestampValue().toInstant())
-                    valuesSb.append(dateTime)
-                }
-                else -> {
-                    log.error("Unknown column type! ${obj::class.qualifiedName}")
-                    exitProcess(1)
+                firstAppended = true
+                when (obj) {
+                    null -> {
+                        valuesSb.append("null")
+                    }
+                    is BigDecimal -> {
+                        valuesSb.append(obj.toString())
+                    }
+                    is Blob -> {
+                        //log.debug("is blob")
+                        val iStream = obj.binaryStream
+                        valuesSb.append(
+                            "IFNULL(LOAD_FILE(CONCAT(@import_dir, '${
+                                relativeBlobFileName(
+                                    tableName,
+                                    blobId
+                                )
+                            }')), $IMPORT_ERROR)"
+                        )
+                        writeInputStreamToZipFile(
+                            iStream,
+                            absoluteBlobFileName(targetPath, tableName, blobId),
+                            blobFileName(blobId)
+                        )
+                        blobId++
+                    }
+                    is Clob -> {
+                        //log.debug("is clob")
+                        val reader = obj.characterStream
+                        valuesSb.append(
+                            "IFNULL(LOAD_FILE(CONCAT(@import_dir, '${
+                                relativeClobFileName(
+                                    tableName,
+                                    clobId
+                                )
+                            }')), $IMPORT_ERROR)"
+                        )
+                        writeReaderToFile(reader, absoluteClobFileName(targetPath, tableName, clobId))
+                        clobId++
+                    }
+                    is String -> {
+                        appendMySqlString(valuesSb, obj)
+                    }
+                    is Timestamp -> { // todo: Genauigkeit beachten
+                        // '2021-12-31 23:59:59'
+                        val dateTime = mySqlTimestampFormat.format(obj.toInstant())
+                        valuesSb.append(dateTime)
+                    }
+                    is TIMESTAMP -> {
+                        //log.debug("spezielles Oracle-TIMESTAMP-Format")
+                        val dateTime = mySqlTimestampFormat.format(obj.timestampValue().toInstant())
+                        valuesSb.append(dateTime)
+                    }
+                    else -> {
+                        log.error("Unknown column type! ${obj::class.qualifiedName}")
+                        exitProcess(1)
+                    }
                 }
             }
         }
@@ -270,21 +323,14 @@ fun assertEmptyDirectory(dirPath: String) {
     log.debug("assertEmptyDirectory(dirName='$dirPath')")
     val dir = File(dirPath)
     if (!dir.exists()) {
-        log.error("Target path doesn't exist!")
-        exitProcess(1)
+        throw IllegalArgumentException("Target path doesn't exist!")
     }
     if (!dir.isDirectory) {
-        log.error("Target path is not a directory!")
-        exitProcess(1)
+        throw IllegalArgumentException("Target path is not a directory!")
     }
-    val dirEntries: Array<out String?>? = dir.list()
-    if (dirEntries == null) {
-        log.error("Error reading target dir!")
-        exitProcess(1)
-    }
+    val dirEntries: Array<out String> = dir.list() ?: throw IllegalArgumentException("Error reading target dir!")
     if (dirEntries.isNotEmpty()) {
-        log.error("The target directory is not empty!")
-        exitProcess(1)
+        throw IllegalArgumentException("The target directory is not empty!")
     }
 }
 
@@ -319,6 +365,10 @@ fun escapeMySqlName(name: String): String {
  */
 fun relativeMainSqlFileName(): String {
     return "main.sql"
+}
+
+fun relativeCheckSqlFileName(): String {
+    return "checks.sql"
 }
 
 /**
@@ -366,6 +416,10 @@ fun absoluteTruncatesSqlFileName(targetPath: String): String {
     return "$targetPath${File.separator}${relativeTruncatesSqlFileName()}"
 }
 
+fun absoluteCheckSqlFileName(targetPath: String): String {
+    return "$targetPath${File.separator}${relativeCheckSqlFileName()}"
+}
+
 fun absoluteInsertSqlFileName(targetPath: String, tableName: String): String {
     return "$targetPath${File.separator}${relativeInsertSqlFileName(tableName)}"
 }
@@ -385,7 +439,7 @@ fun absoluteClobFileName(targetPath: String, tableName: String, clobId: Int): St
 /**
  * Head of the main SQL file with comments and initial SQL statements.
  */
-fun mainPrefix(jdbcUrl: String, schema: String): String {
+fun mainHead(jdbcUrl: String, schema: String): String {
     val dateTime = LocalDateTime.now()
     val dateTimeStr = dateTime.format(DateTimeFormatter.ofPattern("y-MM-dd H:m:ss"))
     val txt = StringBuilder()
@@ -394,8 +448,22 @@ fun mainPrefix(jdbcUrl: String, schema: String): String {
     txt.append("-- schema: $schema\n")
     txt.append("-- exported: ${dateTimeStr}\n")
     txt.append('\n')
+    txt.append("SET @import_dir='/tmp/import/';\n")
+    txt.append('\n')
     txt.append("SET foreign_key_checks=0;\n")
     txt.append("SET autocommit=1;\n")
+    txt.append('\n')
+    return txt.toString()
+}
+
+/**
+ * Foot of the main SQL file with comments and initial SQL statements.
+ */
+fun mainFoot(): String {
+    val txt = StringBuilder()
+    txt.append('\n')
+    txt.append("SET foreign_key_checks=1;\n")
+    txt.append("source ${relativeCheckSqlFileName()}\n")
     return txt.toString()
 }
 

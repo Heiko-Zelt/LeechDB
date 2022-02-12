@@ -35,6 +35,10 @@ task customFatJar(type: Jar) {
     with jar
 }
 
+test {
+    useJUnitPlatform()
+}
+
 /*
 task copySourceJars( type: Copy ) {
     def sources = configurations.runtime.resolvedConfiguration.resolvedArtifacts.collect { artifact ->
@@ -58,4 +62,5 @@ dependencies {
     implementation 'io.github.microutils:kotlin-logging:2.0.3'
     implementation 'org.slf4j:slf4j-api:1.7.35' // needed by kotlin-logging
     implementation 'org.slf4j:slf4j-simple:1.7.35' // simple implementation of api
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.8.2'
 }
