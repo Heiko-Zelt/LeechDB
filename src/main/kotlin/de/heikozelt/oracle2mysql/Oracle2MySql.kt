@@ -46,8 +46,6 @@ private val mySqlTimestampFormat = DateTimeFormatter
  * Reads configuration file "export.properties" from current working directory.
  * It is assumed that the schema in the target database already exists e.g. created using "Liquibase".
  * Before importing the new data foreign key constraints must be switched of temporarily.
- * todo: exclude/ignore tables, property list of (table_name)
- * todo: exclude/ignore columns, property list of (table_name.column_name)
  */
 fun main() {
     val startTime = System.nanoTime()
@@ -62,8 +60,8 @@ fun main() {
     ds.url = konf.url
     val conn = ds.getConnection(konf.user, konf.password)
     val stmt = conn.createStatement();
+    log.debug("SQL query: $SELECT_TABLE_NAMES")
     val tablesRs = stmt.executeQuery(SELECT_TABLE_NAMES)
-    log.debug("executed query")
     val truncatesFile = FileWriter(absoluteTruncatesSqlFileName(konf.targetPath))
     val mainFile = FileWriter(absoluteMainSqlFileName(konf.targetPath))
     val checkFile = FileWriter(absoluteCheckSqlFileName(konf.targetPath))
@@ -120,7 +118,9 @@ private fun isTableEmpty(conn: Connection, tableName: String): Boolean {
 private fun countRows(conn: Connection, tableName: String): Int {
     //log.debug("countRows(tableName=$tableName)")
     val stmt = conn.createStatement();
-    val rs = stmt.executeQuery("$SELECT_COUNT_FROM$tableName")
+    val sql = "$SELECT_COUNT_FROM$tableName"
+    log.debug("SQL query: $sql")
+    val rs = stmt.executeQuery("$sql")
     rs.next()
     val rowCount = rs.getInt(1)
     rs.close()
@@ -136,8 +136,9 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
     var blobId = 0
     var clobId = 0
     val stmt = conn.createStatement();
-    val rs = stmt.executeQuery("$SELECT_ALL_FROM$tableName")
-    //log.debug("executed query")
+    val sql = "$SELECT_ALL_FROM$tableName"
+    log.debug("SQL query: $sql")
+    val rs = stmt.executeQuery("$sql")
     val meta = rs.metaData
     val numberOfColumns = meta.columnCount
     //log.debug("number of columns: $numberOfColumns")
