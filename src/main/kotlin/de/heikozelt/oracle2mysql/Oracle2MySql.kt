@@ -60,7 +60,7 @@ fun main() {
     val ds = OracleDataSource()
     ds.url = konf.url
     val conn = ds.getConnection(konf.user, konf.password)
-    val stmt = conn.createStatement();
+    val stmt = conn.createStatement()
     log.debug("SQL query: $SELECT_TABLE_NAMES")
     val tablesRs = stmt.executeQuery(SELECT_TABLE_NAMES)
     val truncatesFile = FileWriter(absoluteTruncatesSqlFileName(konf.targetPath))
@@ -118,10 +118,10 @@ private fun isTableEmpty(conn: Connection, tableName: String): Boolean {
  */
 private fun countRows(conn: Connection, tableName: String): Int {
     //log.debug("countRows(tableName=$tableName)")
-    val stmt = conn.createStatement();
+    val stmt = conn.createStatement()
     val sql = "$SELECT_COUNT_FROM$tableName"
     log.debug("SQL query: $sql")
-    val rs = stmt.executeQuery("$sql")
+    val rs = stmt.executeQuery(sql)
     rs.next()
     val rowCount = rs.getInt(1)
     rs.close()
@@ -136,10 +136,10 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
     log.debug("exportTable(tableName=$tableName)")
     var blobId = 0
     var clobId = 0
-    val stmt = conn.createStatement();
+    val stmt = conn.createStatement()
     val sql = "$SELECT_ALL_FROM$tableName"
     log.debug("SQL query: $sql")
-    val rs = stmt.executeQuery("$sql")
+    val rs = stmt.executeQuery(sql)
     val meta = rs.metaData
     val numberOfColumns = meta.columnCount
     //log.debug("number of columns: $numberOfColumns")
@@ -279,9 +279,8 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
     sqlStream.close()
 }
 
-/**
+/*
  * for BLOBs
- */
 fun writeInputStreamToFile(iStream: InputStream, filePath: String) {
     //de.heikozelt.oracle2mysql.log.debug("de.heikozelt.oracle2mysql.writeInputStreamToFile(fileName='$filePath')")
     val targetFile = File(filePath)
@@ -296,6 +295,7 @@ fun writeInputStreamToFile(iStream: InputStream, filePath: String) {
     iStream.close()
     oStream.close()
 }
+*/
 
 /**
  * for BLOBs

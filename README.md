@@ -7,4 +7,4 @@ The files contain MySQL-INSERT-Statements to be imported via mysql command line 
 If columns contains large objects (CLOBs or BLOBs) they are written to separate files and referenced.
 Reads configuration file "export.properties" from current working directory.
 It is assumed that the schema in the target database already exists e.g. created using "Liquibase".
-Before importing the new data foreign key constraints must be switched of temporarily.
+Before importing the new data, foreign key constraints must be switched off temporarily.

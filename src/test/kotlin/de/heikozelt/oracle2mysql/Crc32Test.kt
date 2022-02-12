@@ -58,9 +58,9 @@ class Crc32Test {
      * in MySQL:
      * SELECT CRC32("hallo");
      */
-    fun crc32OfString(str: String): Long {
+    private fun crc32OfString(str: String): Long {
         val buffer = str.toByteArray()
-        val crc32 = CRC32();
+        val crc32 = CRC32()
         crc32.update(buffer, 0, buffer.size)
         return crc32.value
     }
