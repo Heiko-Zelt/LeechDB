@@ -64,8 +64,10 @@ fun main() {
     log.debug("SQL query: $SELECT_TABLE_NAMES")
     val tablesRs = stmt.executeQuery(SELECT_TABLE_NAMES)
     val truncatesFile = FileWriter(absoluteTruncatesSqlFileName(konf.targetPath))
+    truncatesFile.write("SELECT 'TRUNCATE TABLES' AS '';\n")
     val mainFile = FileWriter(absoluteMainSqlFileName(konf.targetPath))
     val checkFile = FileWriter(absoluteCheckSqlFileName(konf.targetPath))
+    checkFile.write("SELECT 'VALIDITY CHECKS' AS '';\n")
     mainFile.write(mainHead(konf.url, konf.user))
     mainFile.write("source ${relativeTruncatesSqlFileName()}\n")
     while (tablesRs.next()) {
@@ -181,6 +183,8 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
 
     val sqlFile = File(absoluteInsertSqlFileName(targetPath, tableName))
     val sqlStream = PrintStream(sqlFile)
+    val msg = "INSERT INTO ${tableName.lowercase()}"
+    sqlStream.println("SELECT ${mySqlString(msg)} AS '';")
 
     // Position 0 wird nicht verwendet
     val checkSums = LongArray(numberOfColumns + 1) { 0L }
@@ -201,7 +205,18 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
                         valuesSb.append("null")
                     }
                     is BigDecimal -> {
-                        valuesSb.append(obj.toString())
+                        val str = obj.toString()
+                        valuesSb.append(str)
+                        // Example: Oracle: NUMBER(1) --> MySQL: BIT(1)
+                        // CRC32(BIT(1)) produces strange results in MySQL
+                        if((meta.getPrecision(i) == 1) && (meta.getScale(i) == 0)) {
+                            checkSums[i] += obj.toLong()
+                        } else {
+                            val ba = str.toByteArray()
+                            crc32.reset()
+                            crc32.update(ba, 0, ba.size)
+                            checkSums[i] = checkSums[i] xor crc32.value
+                        }
                     }
                     is Blob -> {
                         //log.debug("is blob")
@@ -271,7 +286,12 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
         val colName = meta.getColumnName(i)
         if(colName.lowercase() !in excludedColumns) {
             val colType = meta.getColumnTypeName(i)
-            if (colType == "VARCHAR2" || colType == "CHAR" || colType == "NVARCHAR2" || colType == "NCHAR" || colType == "BLOB") {
+            // maybe NUMBER(1) in Oracle --> BIT(1) in MySQL
+            if((colType == "NUMBER") && (meta.getPrecision(i) == 1) && (meta.getScale(i) == 0)) {
+                checkFile.write("SELECT IF(${checkSums[i]} = SUM(${escapeMySqlName(colName)}), 'ok', 'FAILED') As Result,")
+                checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} SUM' AS Test")
+                checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
+            } else if (colType == "VARCHAR2" || colType == "CHAR" || colType == "NVARCHAR2" || colType == "NCHAR" || colType == "BLOB" || colType == "NUMBER") {
                 checkFile.write("SELECT IF(${checkSums[i]} = BIT_XOR(CRC32(${escapeMySqlName(colName)})), 'ok', 'FAILED') As Result,")
                 checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} checksum' AS Test")
                 checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
@@ -497,6 +517,15 @@ fun mainFoot(): String {
     txt.append("SET foreign_key_checks=1;\n")
     txt.append("source ${relativeCheckSqlFileName()}\n")
     return txt.toString()
+}
+
+/**
+ * returns a string literal in MySQL format
+ */
+fun mySqlString(str: String): String {
+    val sb = StringBuilder()
+    appendMySqlString(sb, str)
+    return sb.toString()
 }
 
 /**
