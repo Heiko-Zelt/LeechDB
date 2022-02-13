@@ -32,7 +32,7 @@ private const val IMPORT_ERROR = "'iMpOrTeRrOr'"
 
 private val log = KotlinLogging.logger {}
 private val byteBuffer = ByteArray(1 shl 13) { 0 }
-private val charBuffer = CharArray(1 shl 12) { ' ' }
+private val charBuffer = CharArray(1 shl 12) { '?' }
 private val mySqlTimestampFormat = DateTimeFormatter
     .ofPattern("''yyyy-MM-dd HH:mm:ss.nnnnnnnnn''")
     .withLocale(Locale.getDefault())
@@ -75,7 +75,7 @@ fun main() {
         log.debug("tableName: $tableName")
         if (tableName.startsWith("SYS_IOT_OVER_")) {
             log.debug("  is overflow table")
-        } else if(tableName.lowercase() in konf.excludeTables) {
+        } else if (tableName.lowercase() in konf.excludeTables) {
             log.debug("  is excluded table")
         } else {
             truncatesFile.write("$TRUNCATE_TABLE${escapeMySqlName(tableName)};\n")
@@ -134,7 +134,13 @@ private fun countRows(conn: Connection, tableName: String): Int {
  * Exports a table to a file.
  * The file contains an INSERT statements for every row.
  */
-private fun exportTable(conn: Connection, tableName: String, targetPath: String, checkFile: FileWriter, excludedColumns: Set<String>) {
+private fun exportTable(
+    conn: Connection,
+    tableName: String,
+    targetPath: String,
+    checkFile: FileWriter,
+    excludedColumns: Set<String>
+) {
     log.debug("exportTable(tableName=$tableName)")
     var blobId = 0
     var clobId = 0
@@ -151,7 +157,7 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
     var firstAppended = false
     for (i in 1..numberOfColumns) {
         val colName = meta.getColumnName(i)
-        if(colName.lowercase() in excludedColumns) {
+        if (colName.lowercase() in excludedColumns) {
             log.debug("  column #$i: $colName: is excluded")
         } else {
             if (firstAppended) {
@@ -194,7 +200,7 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
         firstAppended = false
         for (i in 1..numberOfColumns) {
             val colName = meta.getColumnName(i)
-            if(colName.lowercase() !in excludedColumns) {
+            if (colName.lowercase() !in excludedColumns) {
                 val obj: Any? = rs.getObject(i)
                 if (firstAppended) {
                     valuesSb.append(", ")
@@ -209,7 +215,7 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
                         valuesSb.append(str)
                         // Example: Oracle: NUMBER(1) --> MySQL: BIT(1)
                         // CRC32(BIT(1)) produces strange results in MySQL
-                        if((meta.getPrecision(i) == 1) && (meta.getScale(i) == 0)) {
+                        if ((meta.getPrecision(i) == 1) && (meta.getScale(i) == 0)) {
                             checkSums[i] += obj.toLong()
                         } else {
                             val ba = str.toByteArray()
@@ -245,11 +251,13 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
                             "IFNULL(LOAD_FILE(CONCAT(@import_dir, '${
                                 relativeClobFileName(
                                     tableName,
-                                    clobId
-                                )
+                                    clobId,
+
+                                    )
                             }')), $IMPORT_ERROR)"
                         )
-                        writeReaderToFile(reader, absoluteClobFileName(targetPath, tableName, clobId))
+                        writeReaderToFile(reader, absoluteClobFileName(targetPath, tableName, clobId), crc32)
+                        checkSums[i] = checkSums[i] xor crc32.value
                         clobId++
                     }
                     is String -> {
@@ -282,16 +290,24 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
         //de.heikozelt.oracle2mysql.log.debug("insertStatement='$insertStatement'")
         sqlStream.println(insertStatement)
     }
-    for(i in 1..numberOfColumns) {
+    for (i in 1..numberOfColumns) {
         val colName = meta.getColumnName(i)
-        if(colName.lowercase() !in excludedColumns) {
+        if (colName.lowercase() !in excludedColumns) {
             val colType = meta.getColumnTypeName(i)
             // maybe NUMBER(1) in Oracle --> BIT(1) in MySQL
-            if((colType == "NUMBER") && (meta.getPrecision(i) == 1) && (meta.getScale(i) == 0)) {
+            if ((colType == "NUMBER") && (meta.getPrecision(i) == 1) && (meta.getScale(i) == 0)) {
                 checkFile.write("SELECT IF(${checkSums[i]} = SUM(${escapeMySqlName(colName)}), 'ok', 'FAILED') As Result,")
                 checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} SUM' AS Test")
                 checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
-            } else if (colType == "VARCHAR2" || colType == "CHAR" || colType == "NVARCHAR2" || colType == "NCHAR" || colType == "BLOB" || colType == "NUMBER") {
+            } else if (
+                colType == "VARCHAR2" ||
+                colType == "CHAR" ||
+                colType == "NVARCHAR2" ||
+                colType == "NCHAR" ||
+                colType == "BLOB" ||
+                colType == "CLOB" ||
+                colType == "NUMBER"
+            ) {
                 checkFile.write("SELECT IF(${checkSums[i]} = BIT_XOR(CRC32(${escapeMySqlName(colName)})), 'ok', 'FAILED') As Result,")
                 checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} checksum' AS Test")
                 checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
@@ -344,14 +360,21 @@ fun writeInputStreamToZipFile(iStream: InputStream, zipFilePath: String, fileNam
 /**
  * for CLOBs
  */
-fun writeReaderToFile(reader: Reader, filePath: String) {
-    //de.heikozelt.oracle2mysql.log.debug("de.heikozelt.oracle2mysql.writeInputStreamToFile(fileName='$filePath')")
+fun writeReaderToFile(reader: Reader, filePath: String, crc32: CRC32) {
+    //log.debug("de.heikozelt.oracle2mysql.writeInputStreamToFile(fileName='$filePath')")
     val targetFile = File(filePath)
     val writer = FileWriter(targetFile)
     var charsRead: Int
-    var chunks = 0
+    //var chunks = 0
+    crc32.reset()
     while (reader.read(charBuffer).also { charsRead = it } != -1) {
-        chunks++
+        //chunks++
+        val ba = if (charsRead == charBuffer.size) {
+            charBuffer.toString().toByteArray()
+        } else {
+            charBuffer.sliceArray(0 until charsRead).toString().toByteArray()
+        }
+        crc32.update(ba, 0, ba.size)
         writer.write(charBuffer, 0, charsRead)
     }
     //log.debug("chunks: $chunks")
