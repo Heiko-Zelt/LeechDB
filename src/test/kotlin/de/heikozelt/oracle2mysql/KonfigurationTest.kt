@@ -6,6 +6,22 @@ import java.util.*
 
 internal class KonfigurationTest {
     @Test
+    fun fromProperties_illegal() {
+        val props = Properties().apply {
+            setProperty("oracle2mysql.source.url", "jdbc:oracle:thin:@//localhost:1521/orcl")
+            setProperty("oracle2mysql.source.user", "scott")
+            setProperty("oracle2mysql.source.password", "tiger")
+            setProperty("oracle2mysql.target.path", "c:\\temp")
+            setProperty("oracle2mysql.illegal.property", "something")
+        }
+        Konfiguration().apply {
+            assertThrows(IllegalArgumentException::class.java) {
+                fromProperties(props)
+            }
+        }
+    }
+
+    @Test
     fun fromProperties_minimal() {
         val props = Properties().apply {
             setProperty("oracle2mysql.source.url", "jdbc:oracle:thin:@//localhost:1521/orcl")

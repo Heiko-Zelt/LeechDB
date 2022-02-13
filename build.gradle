@@ -15,6 +15,7 @@ repositories {
 }
 
 // Konfiguration des jar-Tasks
+/*
 jar {
     manifest {
         attributes "Main-Class": "de.heikozelt.oracle2mysql.Oracle2MySqlKt"
@@ -23,6 +24,7 @@ jar {
         configurations.implementation.collect { it.isDirectory() ? it : zipTree(it) }
     }
 }
+*/
 
 task customFatJar(type: Jar) {
     description 'Creates one big .jar file with program and libraries, jdbc driver, etc...'
