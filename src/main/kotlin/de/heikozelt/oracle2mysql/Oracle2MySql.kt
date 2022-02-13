@@ -217,9 +217,11 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
                         writeInputStreamToZipFile(
                             iStream,
                             absoluteBlobFileNameZipped(targetPath, tableName, blobId),
-                            blobFileName(blobId)
+                            blobFileName(blobId),
+                            crc32
                         )
                         blobId++
+                        checkSums[i] = checkSums[i] xor crc32.value
                     }
                     is Clob -> {
                         //log.debug("is clob")
@@ -269,7 +271,7 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
         val colName = meta.getColumnName(i)
         if(colName.lowercase() !in excludedColumns) {
             val colType = meta.getColumnTypeName(i)
-            if (colType == "VARCHAR2" || colType == "CHAR" || colType == "NVARCHAR2" || colType == "NCHAR") {
+            if (colType == "VARCHAR2" || colType == "CHAR" || colType == "NVARCHAR2" || colType == "NCHAR" || colType == "BLOB") {
                 checkFile.write("SELECT IF(${checkSums[i]} = BIT_XOR(CRC32(${escapeMySqlName(colName)})), 'ok', 'FAILED') As Result,")
                 checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} checksum' AS Test")
                 checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
@@ -300,15 +302,17 @@ fun writeInputStreamToFile(iStream: InputStream, filePath: String) {
 /**
  * for BLOBs
  */
-fun writeInputStreamToZipFile(iStream: InputStream, zipFilePath: String, fileName: String) {
+fun writeInputStreamToZipFile(iStream: InputStream, zipFilePath: String, fileName: String, crc32: CRC32) {
     //de.heikozelt.oracle2mysql.log.debug("writeInputStreamToZipFile(fileName='$filePath')")
     val targetFile = File(zipFilePath)
     val zipoStream = ZipOutputStream(FileOutputStream(targetFile))
     zipoStream.putNextEntry(ZipEntry(fileName))
     var bytesRead: Int
-    var chunks = 0
+    //var chunks = 0
+    crc32.reset()
     while (iStream.read(byteBuffer).also { bytesRead = it } != -1) {
-        chunks++
+        //chunks++
+        crc32.update(byteBuffer, 0, bytesRead)
         zipoStream.write(byteBuffer, 0, bytesRead)
     }
     //de.heikozelt.oracle2mysql.log.debug("chunks: $chunks")
