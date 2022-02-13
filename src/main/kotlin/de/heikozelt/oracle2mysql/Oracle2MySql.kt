@@ -281,7 +281,7 @@ private fun exportTable(
             val colType = meta.getColumnTypeName(i)
             // maybe NUMBER(1) in Oracle --> BIT(1) in MySQL
             if ((colType == "NUMBER") && (meta.getPrecision(i) == 1) && (meta.getScale(i) == 0)) {
-                checkFile.write("SELECT IF(${checkSums[i]} = SUM(${escapeMySqlName(colName)}), 'ok', 'FAILED') As Result,")
+                checkFile.write("SELECT IF(${checkSums[i]} = IFNULL(SUM(${escapeMySqlName(colName)}), 0), 'ok', 'FAILED') As Result,")
                 checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} SUM' AS Test")
                 checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
             } else if (
@@ -346,7 +346,7 @@ fun writeInputStreamToZipFile(iStream: InputStream, zipFilePath: String, fileNam
  * for CLOBs
  */
 fun writeReaderToFile(reader: Reader, filePath: String, crc32: CRC32) {
-    //log.debug("writeInputStreamToFile(fileName='$filePath')")
+    log.debug("writeInputStreamToFile(fileName='$filePath')")
     val targetFile = File(filePath)
     val writer = FileWriter(targetFile)
     var charsRead: Int
@@ -355,14 +355,15 @@ fun writeReaderToFile(reader: Reader, filePath: String, crc32: CRC32) {
     while (reader.read(charBuffer).also { charsRead = it } != -1) {
         //chunks++
         val ba = if (charsRead == charBuffer.size) {
-            charBuffer.toString().toByteArray()
+            String(charBuffer).toByteArray()
         } else {
-            charBuffer.sliceArray(0 until charsRead).toString().toByteArray()
+            String(charBuffer.sliceArray(0 until charsRead)).toByteArray()
         }
         crc32.update(ba, 0, ba.size)
         writer.write(charBuffer, 0, charsRead)
     }
     //log.debug("chunks: $chunks")
+    //log.debug("crc32.value=${crc32.value}")
     reader.close()
     writer.close()
 }
