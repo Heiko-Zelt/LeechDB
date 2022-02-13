@@ -10,7 +10,6 @@ import java.sql.Clob
 import java.sql.Connection
 import java.sql.Timestamp
 import java.text.DecimalFormat
-//import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -101,19 +100,6 @@ fun main() {
     val deci = DecimalFormat("#,###.00")
     log.info("Elapsed time: ${deci.format(elapsed)} sec")
 }
-
-/*
- * checks if table is empty
-private fun isTableEmpty(conn: Connection, tableName: String): Boolean {
-    log.debug("isTableEmpty(tableName=$tableName)")
-    val stmt = conn.createStatement();
-    val rs = stmt.executeQuery("$SELECT_COUNT_FROM$tableName")
-    rs.next()
-    val empty = rs.getInt(1) == 0
-    rs.close()
-    return empty
-}
-*/
 
 /**
  * counts rows of table
@@ -251,9 +237,8 @@ private fun exportTable(
                             "IFNULL(LOAD_FILE(CONCAT(@import_dir, '${
                                 relativeClobFileName(
                                     tableName,
-                                    clobId,
-
-                                    )
+                                    clobId
+                                )
                             }')), $IMPORT_ERROR)"
                         )
                         writeReaderToFile(reader, absoluteClobFileName(targetPath, tableName, clobId), crc32)
@@ -268,7 +253,7 @@ private fun exportTable(
                         checkSums[i] = checkSums[i] xor crc32.value
                     }
                     is Timestamp -> { // todo: Genauigkeit beachten
-                        // '2021-12-31 23:59:59'
+                        // '2021-12-31 23:59:59.123456789'
                         val dateTime = mySqlTimestampFormat.format(obj.toInstant())
                         valuesSb.append(dateTime)
                     }
@@ -285,9 +270,9 @@ private fun exportTable(
             }
         }
         val values = valuesSb.toString()
-        //de.heikozelt.oracle2mysql.log.debug("values: $values")
+        //log.debug("values: $values")
         val insertStatement = "$insertPrefix$values$insertSuffix"
-        //de.heikozelt.oracle2mysql.log.debug("insertStatement='$insertStatement'")
+        //log.debug("insertStatement='$insertStatement'")
         sqlStream.println(insertStatement)
     }
     for (i in 1..numberOfColumns) {
@@ -320,7 +305,7 @@ private fun exportTable(
 /*
  * for BLOBs
 fun writeInputStreamToFile(iStream: InputStream, filePath: String) {
-    //de.heikozelt.oracle2mysql.log.debug("de.heikozelt.oracle2mysql.writeInputStreamToFile(fileName='$filePath')")
+    //log.debug("de.heikozelt.oracle2mysql.writeInputStreamToFile(fileName='$filePath')")
     val targetFile = File(filePath)
     val oStream = FileOutputStream(targetFile)
     var bytesRead: Int
@@ -329,7 +314,7 @@ fun writeInputStreamToFile(iStream: InputStream, filePath: String) {
         chunks++
         oStream.write(byteBuffer, 0, bytesRead)
     }
-    //de.heikozelt.oracle2mysql.log.debug("chunks: $chunks")
+    //log.debug("chunks: $chunks")
     iStream.close()
     oStream.close()
 }
@@ -339,7 +324,7 @@ fun writeInputStreamToFile(iStream: InputStream, filePath: String) {
  * for BLOBs
  */
 fun writeInputStreamToZipFile(iStream: InputStream, zipFilePath: String, fileName: String, crc32: CRC32) {
-    //de.heikozelt.oracle2mysql.log.debug("writeInputStreamToZipFile(fileName='$filePath')")
+    //log.debug("writeInputStreamToZipFile(fileName='$filePath')")
     val targetFile = File(zipFilePath)
     val zipoStream = ZipOutputStream(FileOutputStream(targetFile))
     zipoStream.putNextEntry(ZipEntry(fileName))
@@ -351,7 +336,7 @@ fun writeInputStreamToZipFile(iStream: InputStream, zipFilePath: String, fileNam
         crc32.update(byteBuffer, 0, bytesRead)
         zipoStream.write(byteBuffer, 0, bytesRead)
     }
-    //de.heikozelt.oracle2mysql.log.debug("chunks: $chunks")
+    //log.debug("chunks: $chunks")
     iStream.close()
     zipoStream.closeEntry()
     zipoStream.close()
@@ -361,7 +346,7 @@ fun writeInputStreamToZipFile(iStream: InputStream, zipFilePath: String, fileNam
  * for CLOBs
  */
 fun writeReaderToFile(reader: Reader, filePath: String, crc32: CRC32) {
-    //log.debug("de.heikozelt.oracle2mysql.writeInputStreamToFile(fileName='$filePath')")
+    //log.debug("writeInputStreamToFile(fileName='$filePath')")
     val targetFile = File(filePath)
     val writer = FileWriter(targetFile)
     var charsRead: Int
