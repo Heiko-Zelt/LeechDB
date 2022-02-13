@@ -269,7 +269,7 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
         val colName = meta.getColumnName(i)
         if(colName.lowercase() !in excludedColumns) {
             val colType = meta.getColumnTypeName(i)
-            if (colType == "VARCHAR2") {
+            if (colType == "VARCHAR2" || colType == "CHAR" || colType == "NVARCHAR2" || colType == "NCHAR") {
                 checkFile.write("SELECT IF(${checkSums[i]} = BIT_XOR(CRC32(${escapeMySqlName(colName)})), 'ok', 'FAILED') As Result,")
                 checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} checksum' AS Test")
                 checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
