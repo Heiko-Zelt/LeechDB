@@ -216,7 +216,7 @@ private fun exportTable(conn: Connection, tableName: String, targetPath: String,
                         )
                         writeInputStreamToZipFile(
                             iStream,
-                            absoluteBlobFileName(targetPath, tableName, blobId),
+                            absoluteBlobFileNameZipped(targetPath, tableName, blobId),
                             blobFileName(blobId)
                         )
                         blobId++
@@ -417,7 +417,15 @@ fun blobFileName(blobId: Int): String {
  * The Path is relative to the main SQL file.
  */
 fun relativeBlobFileName(tableName: String, blobId: Int): String {
-    return "lobs_${tableName.lowercase()}${File.separator}${blobFileName(blobId)}.zip"
+    return "lobs_${tableName.lowercase()}${File.separator}${blobFileName(blobId)}"
+}
+
+/**
+ * Relative path and file name of a BLOB file.
+ * The Path is relative to the main SQL file.
+ */
+fun relativeBlobFileNameZipped(tableName: String, blobId: Int): String {
+    return "${relativeBlobFileName(tableName, blobId)}.zip"
 }
 
 /**
@@ -448,8 +456,8 @@ fun absoluteLobDirName(targetPath: String, tableName: String): String {
     return "$targetPath${File.separator}lobs_${tableName.lowercase()}"
 }
 
-fun absoluteBlobFileName(targetPath: String, tableName: String, blobId: Int): String {
-    return "$targetPath${File.separator}${relativeBlobFileName(tableName, blobId)}"
+fun absoluteBlobFileNameZipped(targetPath: String, tableName: String, blobId: Int): String {
+    return "$targetPath${File.separator}${relativeBlobFileNameZipped(tableName, blobId)}"
 }
 
 fun absoluteClobFileName(targetPath: String, tableName: String, clobId: Int): String {
