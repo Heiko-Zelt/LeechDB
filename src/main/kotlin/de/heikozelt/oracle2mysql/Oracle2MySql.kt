@@ -169,8 +169,11 @@ private fun exportTable(
     val insertSuffix = ");"
     //log.debug("INSERT Statement: $insertPrefix...$insertSuffix")
 
+    var zipoStream: ZipOutputStream? = null
     if (hasLobColumn) {
         createDirectory(absoluteLobDirName(targetPath, tableName))
+        val targetFile = File(absoluteLobZipFileName(targetPath, tableName))
+        zipoStream = ZipOutputStream(FileOutputStream(targetFile))
     }
 
     val sqlFile = File(absoluteInsertSqlFileName(targetPath, tableName))
@@ -221,12 +224,22 @@ private fun exportTable(
                                 )
                             }')), $IMPORT_ERROR)"
                         )
+                        /*
                         writeInputStreamToZipFile(
                             iStream,
                             absoluteBlobFileNameZipped(targetPath, tableName, blobId),
                             blobFileName(blobId),
                             crc32
                         )
+                         */
+                        zipoStream?.let {
+                            writeInputStreamToZipFile(
+                                iStream,
+                                it,
+                                blobFileName(blobId),
+                                crc32
+                            )
+                        }
                         blobId++
                         checkSums[i] = checkSums[i] xor crc32.value
                     }
@@ -241,7 +254,12 @@ private fun exportTable(
                                 )
                             }')), $IMPORT_ERROR)"
                         )
+                        /*
                         writeReaderToFile(reader, absoluteClobFileName(targetPath, tableName, clobId), crc32)
+                         */
+                        zipoStream?.let {
+                            writeReaderToZipFile(reader, it, clobFileName(clobId), crc32)
+                        }
                         checkSums[i] = checkSums[i] xor crc32.value
                         clobId++
                     }
@@ -275,6 +293,7 @@ private fun exportTable(
         //log.debug("insertStatement='$insertStatement'")
         sqlStream.println(insertStatement)
     }
+    zipoStream?.close()
     for (i in 1..numberOfColumns) {
         val colName = meta.getColumnName(i)
         if (colName.lowercase() !in excludedColumns) {
@@ -323,10 +342,8 @@ fun writeInputStreamToFile(iStream: InputStream, filePath: String) {
 /**
  * for BLOBs
  */
-fun writeInputStreamToZipFile(iStream: InputStream, zipFilePath: String, fileName: String, crc32: CRC32) {
+fun writeInputStreamToZipFile(iStream: InputStream, zipoStream: ZipOutputStream, fileName: String, crc32: CRC32) {
     //log.debug("writeInputStreamToZipFile(fileName='$filePath')")
-    val targetFile = File(zipFilePath)
-    val zipoStream = ZipOutputStream(FileOutputStream(targetFile))
     zipoStream.putNextEntry(ZipEntry(fileName))
     var bytesRead: Int
     //var chunks = 0
@@ -339,12 +356,10 @@ fun writeInputStreamToZipFile(iStream: InputStream, zipFilePath: String, fileNam
     //log.debug("chunks: $chunks")
     iStream.close()
     zipoStream.closeEntry()
-    zipoStream.close()
 }
 
-/**
+/*
  * for CLOBs
- */
 fun writeReaderToFile(reader: Reader, filePath: String, crc32: CRC32) {
     log.debug("writeInputStreamToFile(fileName='$filePath')")
     val targetFile = File(filePath)
@@ -366,6 +381,28 @@ fun writeReaderToFile(reader: Reader, filePath: String, crc32: CRC32) {
     //log.debug("crc32.value=${crc32.value}")
     reader.close()
     writer.close()
+}
+*/
+
+fun writeReaderToZipFile(reader: Reader, zipoStream: ZipOutputStream, fileName: String, crc32: CRC32) {
+    zipoStream.putNextEntry(ZipEntry(fileName))
+    var charsRead: Int
+    //var chunks = 0
+    crc32.reset()
+    while (reader.read(charBuffer).also { charsRead = it } != -1) {
+        //chunks++
+        val ba = if (charsRead == charBuffer.size) {
+            String(charBuffer).toByteArray()
+        } else {
+            String(charBuffer.sliceArray(0 until charsRead)).toByteArray()
+        }
+        crc32.update(ba, 0, ba.size)
+        zipoStream.write(ba, 0, ba.size)
+    }
+    //log.debug("chunks: $chunks")
+    //log.debug("crc32.value=${crc32.value}")
+    reader.close()
+    zipoStream.closeEntry()
 }
 
 /**
@@ -446,6 +483,13 @@ fun blobFileName(blobId: Int): String {
 }
 
 /**
+ * Name of a BLOB file.
+ */
+fun clobFileName(clobId: Int): String {
+    return "$clobId.clob"
+}
+
+/**
  * Relative path and file name of a BLOB file.
  * The Path is relative to the main SQL file.
  */
@@ -453,13 +497,13 @@ fun relativeBlobFileName(tableName: String, blobId: Int): String {
     return "lobs_${tableName.lowercase()}${File.separator}${blobFileName(blobId)}"
 }
 
-/**
+/*
  * Relative path and file name of a BLOB file.
  * The Path is relative to the main SQL file.
- */
 fun relativeBlobFileNameZipped(tableName: String, blobId: Int): String {
     return "${relativeBlobFileName(tableName, blobId)}.zip"
 }
+*/
 
 /**
  * Relative path and file name of a CLOB file.
@@ -489,13 +533,21 @@ fun absoluteLobDirName(targetPath: String, tableName: String): String {
     return "$targetPath${File.separator}lobs_${tableName.lowercase()}"
 }
 
+fun absoluteLobZipFileName(targetPath: String, tableName: String): String {
+    return "${absoluteLobDirName(targetPath, tableName)}${File.separator}lobs.zip"
+}
+
+/*
 fun absoluteBlobFileNameZipped(targetPath: String, tableName: String, blobId: Int): String {
     return "$targetPath${File.separator}${relativeBlobFileNameZipped(tableName, blobId)}"
 }
+*/
 
+/*
 fun absoluteClobFileName(targetPath: String, tableName: String, clobId: Int): String {
     return "$targetPath${File.separator}${relativeClobFileName(tableName, clobId)}"
 }
+*/
 
 /**
  * Head of the main SQL file with comments and initial SQL statements.
