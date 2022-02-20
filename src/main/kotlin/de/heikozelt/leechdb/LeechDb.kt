@@ -409,7 +409,7 @@ fun mainHead(jdbcUrl: String, schema: String): String {
     val dateTime = LocalDateTime.now()
     val dateTimeStr = dateTime.format(DateTimeFormatter.ofPattern("y-MM-dd H:m:ss"))
     val txt = StringBuilder()
-    txt.append("-- this dump file set was generated using Oracle2MySql, author: Heiko Zelt\n")
+    txt.append("-- this dump file set was generated using LeechDB, author: Heiko Zelt\n")
     txt.append("-- source database: $jdbcUrl\n")
     txt.append("-- schema: $schema\n")
     txt.append("-- exported: ${dateTimeStr}\n")
