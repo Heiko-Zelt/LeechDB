@@ -1,4 +1,4 @@
-# Oracle2MySql
+# LeechDB
 Simple data migration from Oracle to MySQL database
 
 This little program helps to migrate data from an Oracle to a MySQL/Maria database.
