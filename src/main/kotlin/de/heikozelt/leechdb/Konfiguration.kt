@@ -16,6 +16,7 @@ class Konfiguration {
     var password = ""
     var excludeTables = emptySet<String>()
     val excludeColumns = mutableMapOf<String, MutableSet<String>>()
+    var parallelThreads = 3
     var zip = true
     var targetPath = ""
 
@@ -86,6 +87,15 @@ class Konfiguration {
             log.info("exclude columns in table: '$tab'")
             for (col in cols) {
                 log.info("exclude column: '$col'")
+            }
+        }
+
+        val parallelThreadsProp: String? = props.getProperty(Parameters.PARALLEL_THREADS)
+        log.info("parallelThreads: '${parallelThreadsProp}'")
+        if (parallelThreadsProp != null) {
+            parallelThreads = parallelThreadsProp.toInt()
+            if(parallelThreads <= 0) {
+                throw IllegalArgumentException("Property ${Parameters.TARGET_PATH} must be greater than 0!")
             }
         }
 

@@ -9,11 +9,12 @@ object Parameters {
     const val SOURCE_PASSWORD = PREFIX + "source.password"
     const val EXCLUDE_TABLES = PREFIX + "exclude.tables"
     const val EXCLUDE_COLUMNS = PREFIX + "exclude.columns"
+    const val PARALLEL_THREADS = PREFIX + "parallel.threads"
     const val TARGET_PATH = PREFIX + "target.path"
     const val TARGET_ZIP = PREFIX + "target.zip"
 
     val allowed = arrayOf(
-        SOURCE_URL, SOURCE_USER, SOURCE_PASSWORD, EXCLUDE_TABLES, EXCLUDE_COLUMNS, TARGET_PATH, TARGET_ZIP
+        SOURCE_URL, SOURCE_USER, SOURCE_PASSWORD, EXCLUDE_TABLES, EXCLUDE_COLUMNS, PARALLEL_THREADS, TARGET_PATH, TARGET_ZIP
     )
 
     // Values

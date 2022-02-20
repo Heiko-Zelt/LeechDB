@@ -48,6 +48,7 @@ internal class KonfigurationTest {
             setProperty("leechdb.source.password", "tiger")
             setProperty("leechdb.exclude.tables", "excludeTab1,excludetab2")
             setProperty("leechdb.exclude.columns", "Table1.excol1,table1.exCol2")
+            setProperty("leechdb.parallel.threads", "5")
             setProperty("leechdb.target.path", """q:\temp\test""")
             setProperty("leechdb.target.zip", """no""")
         }
@@ -68,7 +69,7 @@ internal class KonfigurationTest {
                 assertTrue(contains("excol1"))
                 assertTrue(contains("excol2"))
             }
-
+            assertEquals(5, parallelThreads)
             assertEquals("""q:\temp\test""", targetPath)
             assertFalse(zip)
         }
