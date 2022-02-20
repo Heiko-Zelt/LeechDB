@@ -1,4 +1,4 @@
-package de.heikozelt.oracle2mysql
+package de.heikozelt.leechdb
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test

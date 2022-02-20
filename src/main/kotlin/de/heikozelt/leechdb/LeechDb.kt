@@ -1,4 +1,4 @@
-package de.heikozelt.oracle2mysql
+package de.heikozelt.leechdb
 
 import mu.KotlinLogging
 import oracle.jdbc.datasource.impl.OracleDataSource
@@ -39,13 +39,13 @@ private val mySqlTimestampFormat = DateTimeFormatter
 
 
 /**
- * This little program helps to migrate data from an Oracle to a MySQL/Maria database.
+ * LeechDB is a little program, which helps to migrate data from an Oracle to a MySQL/Maria database.
  * It reads a schema from an Oracle database via JDBC and writes the contents of the tables into files.
  * The files contain MySQL-INSERT-Statements to be imported via mysql command line client.
  * If columns contains large objects (CLOBs or BLOBs) they are written to separate files and referenced.
  * Reads configuration file "export.properties" from current working directory.
  * It is assumed that the schema in the target database already exists e.g. created using "Liquibase".
- * Before importing the new data foreign key constraints must be switched of temporarily.
+ * Before importing the new data foreign key constraints must be switched off temporarily.
  */
 fun main() {
     val startTime = System.nanoTime()
@@ -62,13 +62,41 @@ fun main() {
     val stmt = conn.createStatement()
     log.debug("SQL query: $SELECT_TABLE_NAMES")
     val tablesRs = stmt.executeQuery(SELECT_TABLE_NAMES)
-    val truncatesFile = FileWriter(absoluteTruncatesSqlFileName(konf.targetPath))
-    truncatesFile.write("SELECT 'TRUNCATE TABLES' AS '';\n")
-    val mainFile = FileWriter(absoluteMainSqlFileName(konf.targetPath))
-    val checkFile = FileWriter(absoluteCheckSqlFileName(konf.targetPath))
-    checkFile.write("SELECT 'VALIDITY CHECKS' AS '';\n")
-    mainFile.write(mainHead(konf.url, konf.user))
-    mainFile.write("source ${relativeTruncatesSqlFileName()}\n")
+
+    val truncatesStream: PrintStream
+    var truncatesZipStream: ZipOutputStream? = null
+    if(konf.zip) {
+        truncatesZipStream = ZipOutputStream(FileOutputStream(absoluteTruncatesSqlZipFileName(konf.targetPath)))
+        truncatesZipStream.putNextEntry(ZipEntry(relativeTruncatesSqlFileName()))
+        truncatesStream = PrintStream(truncatesZipStream)
+    } else {
+        truncatesStream = PrintStream(absoluteTruncatesSqlFileName(konf.targetPath))
+    }
+
+    val mainStream: PrintStream
+    var mainZipStream: ZipOutputStream? = null
+    if(konf.zip) {
+        mainZipStream = ZipOutputStream(FileOutputStream(absoluteMainSqlZipFileName(konf.targetPath)))
+        mainZipStream.putNextEntry(ZipEntry(relativeMainSqlFileName()))
+        mainStream = PrintStream(mainZipStream)
+    } else {
+        mainStream = PrintStream(absoluteMainSqlFileName(konf.targetPath))
+    }
+
+    val checkStream: PrintStream
+    var checkZipStream: ZipOutputStream? = null
+    if(konf.zip) {
+        checkZipStream = ZipOutputStream(FileOutputStream(absoluteCheckSqlZipFileName(konf.targetPath)))
+        checkZipStream.putNextEntry(ZipEntry(relativeCheckSqlFileName()))
+        checkStream = PrintStream(checkZipStream)
+    } else {
+        checkStream = PrintStream(absoluteCheckSqlFileName(konf.targetPath))
+    }
+
+    truncatesStream.println("SELECT 'TRUNCATE TABLES' AS '';")
+    checkStream.println("SELECT 'VALIDITY CHECKS' AS '';")
+    mainStream.print(mainHead(konf.url, konf.user))
+    mainStream.println("source ${relativeTruncatesSqlFileName()}")
     while (tablesRs.next()) {
         val tableName = tablesRs.getString("TABLE_NAME")
         log.debug("tableName: $tableName")
@@ -77,23 +105,26 @@ fun main() {
         } else if (tableName.lowercase() in konf.excludeTables) {
             log.debug("  is excluded table")
         } else {
-            truncatesFile.write("$TRUNCATE_TABLE${escapeMySqlName(tableName)};\n")
+            truncatesStream.println("$TRUNCATE_TABLE${escapeMySqlName(tableName)};")
             val rowCount = countRows(conn, tableName)
-            checkFile.write("SELECT IF($rowCount = COUNT(*), 'ok', 'FAILED') AS Result,")
-            checkFile.write(" '${escapeMySqlName(tableName)} COUNT $rowCount' AS Test")
-            checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
+            checkStream.print("SELECT IF($rowCount = COUNT(*), 'ok', 'FAILED') AS Result,")
+            checkStream.print(" '${escapeMySqlName(tableName)} COUNT $rowCount' AS Test")
+            checkStream.println(" FROM ${escapeMySqlName(tableName)};")
             if (rowCount == 0) {
                 log.debug("  is empty table")
             } else {
-                mainFile.write("source ${relativeInsertSqlFileName(tableName)}\n")
-                exportTable(conn, tableName, konf.targetPath, checkFile, konf.excludedColumnsForTable(tableName))
+                mainStream.println("source ${relativeInsertSqlFileName(tableName)}")
+                exportTable(conn, tableName, konf.targetPath, checkStream, konf.excludedColumnsForTable(tableName), konf.zip)
             }
         }
     }
-    mainFile.write(mainFoot())
-    mainFile.close()
-    checkFile.close()
-    truncatesFile.close()
+    mainStream.print(mainFoot())
+    mainZipStream?.closeEntry()
+    mainStream.close()
+    checkZipStream?.closeEntry()
+    checkStream.close()
+    truncatesZipStream?.closeEntry()
+    truncatesStream.close()
     log.info("Export finished successfully. :-)")
     val endTime = System.nanoTime()
     val elapsed = (endTime.toFloat() - startTime.toFloat()) / 1_000_000_000
@@ -124,8 +155,9 @@ private fun exportTable(
     conn: Connection,
     tableName: String,
     targetPath: String,
-    checkFile: FileWriter,
-    excludedColumns: Set<String>
+    checkStream: PrintStream,
+    excludedColumns: Set<String>,
+    zip: Boolean
 ) {
     log.debug("exportTable(tableName=$tableName)")
     var blobId = 0
@@ -154,10 +186,10 @@ private fun exportTable(
             val colType = meta.getColumnTypeName(i)
             if (colType == "BLOB" || colType == "CLOB") {
                 hasLobColumn = true
-                checkFile.write("SELECT IF(0 = COUNT(*), 'ok', 'FAILED') AS Result,")
-                checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} LOAD_FILE()' AS Test")
-                checkFile.write(" FROM ${escapeMySqlName(tableName)}")
-                checkFile.write(" WHERE ${escapeMySqlName(colName)} = $IMPORT_ERROR;\n")
+                checkStream.print("SELECT IF(0 = COUNT(*), 'ok', 'FAILED') AS Result,")
+                checkStream.print(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} LOAD_FILE()' AS Test")
+                checkStream.print(" FROM ${escapeMySqlName(tableName)}")
+                checkStream.println(" WHERE ${escapeMySqlName(colName)} = $IMPORT_ERROR;")
             }
             val colPrecision = meta.getPrecision(i)
             val colScale = meta.getScale(i)
@@ -169,17 +201,28 @@ private fun exportTable(
     val insertSuffix = ");"
     //log.debug("INSERT Statement: $insertPrefix...$insertSuffix")
 
-    var zipoStream: ZipOutputStream? = null
+    var lobsZipStream: ZipOutputStream? = null
     if (hasLobColumn) {
         createDirectory(absoluteLobDirName(targetPath, tableName))
-        val targetFile = File(absoluteLobZipFileName(targetPath, tableName))
-        zipoStream = ZipOutputStream(FileOutputStream(targetFile))
+        if(zip) {
+            val targetFile = File(absoluteLobZipFileName(targetPath, tableName))
+            lobsZipStream = ZipOutputStream(FileOutputStream(targetFile))
+        }
     }
 
-    val sqlFile = File(absoluteInsertSqlFileName(targetPath, tableName))
-    val sqlStream = PrintStream(sqlFile)
+    val sqlFile: File
+    val sqlStream: OutputStream
+    if(zip) {
+        sqlFile = File(absoluteInsertSqlZipFileName(targetPath, tableName))
+        sqlStream = ZipOutputStream(FileOutputStream(sqlFile))
+        sqlStream.putNextEntry(ZipEntry(relativeInsertSqlFileName(tableName)))
+    } else {
+        sqlFile = File(absoluteInsertSqlFileName(targetPath, tableName))
+        sqlStream = FileOutputStream(sqlFile)
+    }
+    val sqlPrintStream = PrintStream(sqlStream)
     val msg = "INSERT INTO ${tableName.lowercase()}"
-    sqlStream.println("SELECT ${mySqlString(msg)} AS '';")
+    sqlPrintStream.println("SELECT ${mySqlString(msg)} AS '';")
 
     // Position 0 wird nicht verwendet
     val checkSums = LongArray(numberOfColumns + 1) { 0L }
@@ -224,6 +267,23 @@ private fun exportTable(
                                 )
                             }')), $IMPORT_ERROR)"
                         )
+                        if(zip) {
+                            lobsZipStream?.let {
+                                writeInputStreamToZipFile(
+                                    iStream,
+                                    it,
+                                    blobFileName(blobId),
+                                    crc32
+                                )
+                            }
+                        } else {
+                            writeInputStreamToFile(
+                                iStream,
+                                absoluteBlobFileName(targetPath, tableName, blobId),
+                                crc32
+                            )
+                        }
+
                         /*
                         writeInputStreamToZipFile(
                             iStream,
@@ -232,14 +292,8 @@ private fun exportTable(
                             crc32
                         )
                          */
-                        zipoStream?.let {
-                            writeInputStreamToZipFile(
-                                iStream,
-                                it,
-                                blobFileName(blobId),
-                                crc32
-                            )
-                        }
+
+
                         blobId++
                         checkSums[i] = checkSums[i] xor crc32.value
                     }
@@ -254,11 +308,12 @@ private fun exportTable(
                                 )
                             }')), $IMPORT_ERROR)"
                         )
-                        /*
-                        writeReaderToFile(reader, absoluteClobFileName(targetPath, tableName, clobId), crc32)
-                         */
-                        zipoStream?.let {
-                            writeReaderToZipFile(reader, it, clobFileName(clobId), crc32)
+                        if(zip) {
+                            lobsZipStream?.let {
+                                writeReaderToZipFile(reader, it, clobFileName(clobId), crc32)
+                            }
+                        } else {
+                            writeReaderToFile(reader, absoluteClobFileName(targetPath, tableName, clobId), crc32)
                         }
                         checkSums[i] = checkSums[i] xor crc32.value
                         clobId++
@@ -291,18 +346,18 @@ private fun exportTable(
         //log.debug("values: $values")
         val insertStatement = "$insertPrefix$values$insertSuffix"
         //log.debug("insertStatement='$insertStatement'")
-        sqlStream.println(insertStatement)
+        sqlPrintStream.println(insertStatement)
     }
-    zipoStream?.close()
+    lobsZipStream?.close()
     for (i in 1..numberOfColumns) {
         val colName = meta.getColumnName(i)
         if (colName.lowercase() !in excludedColumns) {
             val colType = meta.getColumnTypeName(i)
             // maybe NUMBER(1) in Oracle --> BIT(1) in MySQL
             if ((colType == "NUMBER") && (meta.getPrecision(i) == 1) && (meta.getScale(i) == 0)) {
-                checkFile.write("SELECT IF(${checkSums[i]} = IFNULL(SUM(${escapeMySqlName(colName)}), 0), 'ok', 'FAILED') As Result,")
-                checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} SUM' AS Test")
-                checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
+                checkStream.print("SELECT IF(${checkSums[i]} = IFNULL(SUM(${escapeMySqlName(colName)}), 0), 'ok', 'FAILED') As Result,")
+                checkStream.print(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} SUM ${checkSums[i]}' AS Test")
+                checkStream.println(" FROM ${escapeMySqlName(tableName)};")
             } else if (
                 colType == "VARCHAR2" ||
                 colType == "CHAR" ||
@@ -312,35 +367,40 @@ private fun exportTable(
                 colType == "CLOB" ||
                 colType == "NUMBER"
             ) {
-                checkFile.write("SELECT IF(${checkSums[i]} = BIT_XOR(CRC32(${escapeMySqlName(colName)})), 'ok', 'FAILED') As Result,")
-                checkFile.write(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} checksum' AS Test")
-                checkFile.write(" FROM ${escapeMySqlName(tableName)};\n")
+                checkStream.print("SELECT IF(${checkSums[i]} = BIT_XOR(CRC32(${escapeMySqlName(colName)})), 'ok', 'FAILED') As Result,")
+                checkStream.print(" '${escapeMySqlName(tableName)}.${escapeMySqlName(colName)} checksum' AS Test")
+                checkStream.println(" FROM ${escapeMySqlName(tableName)};")
             }
         }
     }
-    sqlStream.close()
+    if(sqlStream is ZipOutputStream) {
+        sqlStream.closeEntry()
+    }
+    sqlPrintStream.close()
 }
 
 /*
- * for BLOBs
-fun writeInputStreamToFile(iStream: InputStream, filePath: String) {
-    //log.debug("de.heikozelt.oracle2mysql.writeInputStreamToFile(fileName='$filePath')")
+ * for BLOBs (not Zipped)
+ */
+fun writeInputStreamToFile(iStream: InputStream, filePath: String, crc32: CRC32) {
+    //log.debug("writeInputStreamToFile(fileName='$filePath')")
     val targetFile = File(filePath)
     val oStream = FileOutputStream(targetFile)
     var bytesRead: Int
-    var chunks = 0
+    //var chunks = 0
+    crc32.reset()
     while (iStream.read(byteBuffer).also { bytesRead = it } != -1) {
-        chunks++
+        //chunks++
+        crc32.update(byteBuffer, 0, bytesRead)
         oStream.write(byteBuffer, 0, bytesRead)
     }
     //log.debug("chunks: $chunks")
     iStream.close()
     oStream.close()
 }
-*/
 
 /**
- * for BLOBs
+ * for BLOBs (zipped)
  */
 fun writeInputStreamToZipFile(iStream: InputStream, zipoStream: ZipOutputStream, fileName: String, crc32: CRC32) {
     //log.debug("writeInputStreamToZipFile(fileName='$filePath')")
@@ -358,10 +418,11 @@ fun writeInputStreamToZipFile(iStream: InputStream, zipoStream: ZipOutputStream,
     zipoStream.closeEntry()
 }
 
-/*
- * for CLOBs
+/**
+ * for CLOBs (not zipped)
+ */
 fun writeReaderToFile(reader: Reader, filePath: String, crc32: CRC32) {
-    log.debug("writeInputStreamToFile(fileName='$filePath')")
+    //log.debug("writeInputStreamToFile(fileName='$filePath')")
     val targetFile = File(filePath)
     val writer = FileWriter(targetFile)
     var charsRead: Int
@@ -382,8 +443,10 @@ fun writeReaderToFile(reader: Reader, filePath: String, crc32: CRC32) {
     reader.close()
     writer.close()
 }
-*/
 
+/**
+ * for CLOBs (zipped)
+ */
 fun writeReaderToZipFile(reader: Reader, zipoStream: ZipOutputStream, fileName: String, crc32: CRC32) {
     zipoStream.putNextEntry(ZipEntry(fileName))
     var charsRead: Int
@@ -513,20 +576,44 @@ fun relativeClobFileName(tableName: String, clobId: Int): String {
     return "lobs_${tableName.lowercase()}${File.separator}$clobId.clob"
 }
 
+fun absoluteBlobFileName(targetPath: String, tableName: String, blobId: Int): String {
+    return "$targetPath${File.separator}${relativeBlobFileName(tableName, blobId)}"
+}
+
+fun absoluteClobFileName(targetPath: String, tableName: String, clobId: Int): String {
+    return "$targetPath${File.separator}${relativeClobFileName(tableName, clobId)}"
+}
+
 fun absoluteMainSqlFileName(targetPath: String): String {
     return "$targetPath${File.separator}${relativeMainSqlFileName()}"
+}
+
+fun absoluteMainSqlZipFileName(targetPath: String): String {
+    return absoluteMainSqlFileName(targetPath) + ".zip"
 }
 
 fun absoluteTruncatesSqlFileName(targetPath: String): String {
     return "$targetPath${File.separator}${relativeTruncatesSqlFileName()}"
 }
 
+fun absoluteTruncatesSqlZipFileName(targetPath: String): String {
+    return absoluteTruncatesSqlFileName(targetPath) + ".zip"
+}
+
 fun absoluteCheckSqlFileName(targetPath: String): String {
     return "$targetPath${File.separator}${relativeCheckSqlFileName()}"
 }
 
+fun absoluteCheckSqlZipFileName(targetPath: String): String {
+    return absoluteCheckSqlFileName(targetPath) + ".zip"
+}
+
 fun absoluteInsertSqlFileName(targetPath: String, tableName: String): String {
     return "$targetPath${File.separator}${relativeInsertSqlFileName(tableName)}"
+}
+
+fun absoluteInsertSqlZipFileName(targetPath: String, tableName: String): String {
+    return absoluteInsertSqlFileName(targetPath, tableName) + ".zip"
 }
 
 fun absoluteLobDirName(targetPath: String, tableName: String): String {
@@ -537,17 +624,6 @@ fun absoluteLobZipFileName(targetPath: String, tableName: String): String {
     return "${absoluteLobDirName(targetPath, tableName)}${File.separator}lobs.zip"
 }
 
-/*
-fun absoluteBlobFileNameZipped(targetPath: String, tableName: String, blobId: Int): String {
-    return "$targetPath${File.separator}${relativeBlobFileNameZipped(tableName, blobId)}"
-}
-*/
-
-/*
-fun absoluteClobFileName(targetPath: String, tableName: String, clobId: Int): String {
-    return "$targetPath${File.separator}${relativeClobFileName(tableName, clobId)}"
-}
-*/
 
 /**
  * Head of the main SQL file with comments and initial SQL statements.

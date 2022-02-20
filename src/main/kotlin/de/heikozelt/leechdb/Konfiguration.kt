@@ -1,4 +1,4 @@
-package de.heikozelt.oracle2mysql
+package de.heikozelt.leechdb
 
 import mu.KotlinLogging
 import java.io.FileInputStream
@@ -16,44 +16,45 @@ class Konfiguration {
     var password = ""
     var excludeTables = emptySet<String>()
     val excludeColumns = mutableMapOf<String, MutableSet<String>>()
+    var zip = true
     var targetPath = ""
 
     fun loadFromPropertiesFile() {
-        val fis = FileInputStream("export.properties")
+        val fis = FileInputStream(CONFIG_FILENAME)
         val props = Properties()
         props.load(fis)
         fromProperties(props)
     }
 
     fun fromProperties(props: Properties) {
-        for(p in props.propertyNames()) {
-            if(p !in allowedProperties) {
+        for (p in props.propertyNames()) {
+            if (p !in Parameters.allowed) {
                 throw IllegalArgumentException("Property '$p' is not allowed in Configuration!")
             }
         }
 
-        val urlProp: String? = props.getProperty("oracle2mysql.source.url")
+        val urlProp: String? = props.getProperty(Parameters.SOURCE_URL)
         log.info("url: '$urlProp'")
         if (urlProp == null) {
-            throw IllegalArgumentException("missing property oracle2mysql.source.url!")
+            throw IllegalArgumentException("missing property ${Parameters.SOURCE_URL}!")
         }
         url = urlProp
 
-        val userProp: String? = props.getProperty("oracle2mysql.source.user")
+        val userProp: String? = props.getProperty(Parameters.SOURCE_USER)
         log.info("user: '$userProp'")
         if (userProp == null) {
-            throw IllegalArgumentException("missing property oracle2mysql.source.user!")
+            throw IllegalArgumentException("missing property ${Parameters.SOURCE_USER}!")
         }
         user = userProp
 
-        val passwordProp: String = props.getProperty("oracle2mysql.source.password")
-            ?: throw IllegalArgumentException("missing property oracle2mysql.source.password!")
+        val passwordProp: String = props.getProperty(Parameters.SOURCE_PASSWORD)
+            ?: throw IllegalArgumentException("missing property ${Parameters.SOURCE_PASSWORD}!")
         password = passwordProp
 
         //val schema = props.getProperty("oracle2mysql.source.schema")
         //log.debug("schema: '$schema'")
 
-        val excludeTablesProp: String? = props.getProperty("oracle2mysql.exclude.tables")
+        val excludeTablesProp: String? = props.getProperty(Parameters.EXCLUDE_TABLES)
         if (excludeTablesProp != null) {
             excludeTables = excludeTablesProp.lowercase().split(",").toSet()
         }
@@ -61,7 +62,7 @@ class Konfiguration {
             log.info("exclude table: '$tab'")
         }
 
-        val excludeColumnsProp: String? = props.getProperty("oracle2mysql.exclude.columns")
+        val excludeColumnsProp: String? = props.getProperty(Parameters.EXCLUDE_COLUMNS)
         if (excludeColumnsProp != null) {
             val strings = excludeColumnsProp.lowercase().split(",")
             log.debug("strings: $strings")
@@ -88,12 +89,24 @@ class Konfiguration {
             }
         }
 
-        val targetPathProp: String? = props.getProperty("oracle2mysql.target.path")
+        val targetPathProp: String? = props.getProperty(Parameters.TARGET_PATH)
         log.info("targetPath: '${targetPathProp}'")
         if (targetPathProp == null) {
-            throw IllegalArgumentException("missing property oracle2mysql.target.path!")
+            throw IllegalArgumentException("missing property ${Parameters.TARGET_PATH}!")
         }
         targetPath = targetPathProp
+
+        val targetZipProp: String? = props.getProperty(Parameters.TARGET_ZIP)
+        log.info("targetZip: '${targetZipProp}'")
+        targetZipProp?.let {
+            zip = when (it.trim()) {
+                Parameters.NO -> false
+                Parameters.YES -> true
+                else -> throw IllegalArgumentException(
+                    "allowed values for ${Parameters.TARGET_ZIP} are '${Parameters.NO}' or '${Parameters.YES}'"
+                )
+            }
+        }
     }
 
     fun excludedColumnsForTable(tableName: String): Set<String> {
@@ -106,13 +119,6 @@ class Konfiguration {
     }
 
     companion object {
-        private val allowedProperties = arrayOf(
-            "oracle2mysql.source.url",
-            "oracle2mysql.source.user",
-            "oracle2mysql.source.password",
-            "oracle2mysql.exclude.tables",
-            "oracle2mysql.exclude.columns",
-            "oracle2mysql.target.path",
-        )
+        const val CONFIG_FILENAME = "export.properties"
     }
 }

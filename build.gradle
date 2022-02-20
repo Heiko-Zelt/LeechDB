@@ -6,7 +6,7 @@ plugins {
     id "org.jetbrains.dokka" version "1.6.10"
 }
 
-group 'de.heikozelt.oracle2mysql'
+group 'de.heikozelt.leechdb'
 version '1.0-SNAPSHOT'
 
 repositories {
@@ -29,7 +29,7 @@ jar {
 task customFatJar(type: Jar) {
     description 'Creates one big .jar file with program and libraries, jdbc driver, etc...'
     manifest {
-        attributes 'Main-Class': 'de.heikozelt.oracle2mysql.Oracle2MySqlKt'
+        attributes 'Main-Class': 'de.heikozelt.leechdb.LeechDbKt'
     }
     from {
         configurations.compileClasspath.findAll { it.name.endsWith('jar') }.collect { zipTree(it) }
@@ -61,8 +61,8 @@ task copySourceJars( type: Copy ) {
 dependencies {
     implementation 'org.jetbrains.kotlin:kotlin-stdlib'
     implementation 'com.oracle.database.jdbc:ojdbc11-production:21.5.0.0'
-    implementation 'io.github.microutils:kotlin-logging:2.0.3'
-    implementation 'org.slf4j:slf4j-api:1.7.35' // needed by kotlin-logging
-    implementation 'org.slf4j:slf4j-simple:1.7.35' // simple implementation of api
+    implementation 'io.github.microutils:kotlin-logging:2.1.21'
+    implementation 'org.slf4j:slf4j-api:1.7.36' // needed by kotlin-logging
+    implementation 'org.slf4j:slf4j-simple:1.7.36' // simple implementation of api
     testImplementation 'org.junit.jupiter:junit-jupiter:5.8.2'
 }
